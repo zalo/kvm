@@ -55,6 +55,7 @@ import {
 } from "@components/VideoOverlay";
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
+import { useGamepad } from "@hooks/useGamepad";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
@@ -716,6 +717,10 @@ export default function KvmIdRoute() {
 
   // Mouse handler for E2E tests
   const { reportAbsMouseEvent, rpcHidReady } = useHidRpc();
+
+  // Gamepad passthrough — polls navigator.getGamepads while enabled.
+  const gamepadPassthroughEnabled = useSettingsStore(s => s.gamepadPassthroughEnabled);
+  useGamepad(gamepadPassthroughEnabled);
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();

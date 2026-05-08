@@ -40,6 +40,7 @@ const MountRoute = lazy(() => import("@routes/devices.$id.mount"));
 const SettingsRoute = lazy(() => import("@routes/devices.$id.settings"));
 const SettingsMouseRoute = lazy(() => import("@routes/devices.$id.settings.mouse"));
 const SettingsKeyboardRoute = lazy(() => import("@routes/devices.$id.settings.keyboard"));
+const SettingsGamepadRoute = lazy(() => import("@routes/devices.$id.settings.gamepad"));
 const SettingsAdvancedRoute = lazy(() => import("@routes/devices.$id.settings.advanced"));
 const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.hardware"));
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
@@ -149,6 +150,10 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
         {
           path: "keyboard",
           element: <SettingsKeyboardRoute />,
+        },
+        {
+          path: "gamepad",
+          element: <SettingsGamepadRoute />,
         },
         {
           path: "advanced",

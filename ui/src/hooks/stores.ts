@@ -400,6 +400,9 @@ export interface SettingsState {
 
   hideStatusBar: boolean;
   setHideStatusBar: (hide: boolean) => void;
+
+  gamepadPassthroughEnabled: boolean;
+  setGamepadPassthroughEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -455,6 +458,10 @@ export const useSettingsStore = create(
 
       hideStatusBar: false,
       setHideStatusBar: (hide: boolean) => set({ hideStatusBar: hide }),
+
+      gamepadPassthroughEnabled: false,
+      setGamepadPassthroughEnabled: (enabled: boolean) =>
+        set({ gamepadPassthroughEnabled: enabled }),
     }),
     {
       name: "settings",

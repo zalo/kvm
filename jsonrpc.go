@@ -936,6 +936,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.MassStorage = enabled
 	case "serialConsole":
 		config.UsbDevices.SerialConsole = enabled
+	case "gamepad":
+		config.UsbDevices.Gamepad = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
@@ -1257,6 +1259,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
+	"gamepadReport":              {Func: rpcGamepadReport, Params: []string{"padIndex", "lx", "ly", "rx", "ry", "lt", "rt", "buttons"}},
+	"getGamepadSlotsAvailable":   {Func: rpcGetGamepadSlotsAvailable},
 	"getVideoState":              {Func: rpcGetVideoState},
 	"getUSBState":                {Func: rpcGetUSBState},
 	"unmountImage":               {Func: rpcUnmountImage},

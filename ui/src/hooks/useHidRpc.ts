@@ -5,6 +5,7 @@ import { useRTCStore } from "@hooks/stores";
 
 import {
   CancelKeyboardMacroReportMessage,
+  GamepadReportMessage,
   HID_RPC_VERSION,
   HandshakeMessage,
   KeyboardMacroStep,
@@ -273,6 +274,35 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [sendMessage],
   );
 
+  // Track per-pad last-button state so each slot's button presses go on the
+  // reliable channel independently.
+  const lastGamepadButtons = useRef<Map<number, number>>(new Map());
+
+  const reportGamepadEvent = useCallback(
+    (
+      padIndex: number,
+      lx: number,
+      ly: number,
+      rx: number,
+      ry: number,
+      lt: number,
+      rt: number,
+      buttons: number,
+    ) => {
+      const prev = lastGamepadButtons.current.get(padIndex) ?? 0;
+      const buttonsChanged = buttons !== prev;
+      lastGamepadButtons.current.set(padIndex, buttons);
+
+      // Mirror the abs-mouse strategy: button-state changes go on the reliable
+      // channel so press/release are never dropped, while pure stick/trigger
+      // updates use the unreliable channel for low latency.
+      sendMessage(new GamepadReportMessage(padIndex, lx, ly, rx, ry, lt, rt, buttons), {
+        useUnreliableChannel: !buttonsChanged,
+      });
+    },
+    [sendMessage],
+  );
+
   const reportKeyboardMacroEvent = useCallback(
     (steps: KeyboardMacroStep[]) => {
       sendMessage(new KeyboardMacroReportMessage(false, steps.length, steps));
@@ -331,6 +361,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportKeypressEvent,
     reportAbsMouseEvent,
     reportRelMouseEvent,
+    reportGamepadEvent,
     reportKeyboardMacroEvent,
     cancelOngoingKeyboardMacro,
     reportKeypressKeepAlive,

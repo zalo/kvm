@@ -19,6 +19,7 @@ type Devices struct {
 	AbsoluteMouse bool `json:"absolute_mouse"`
 	RelativeMouse bool `json:"relative_mouse"`
 	Keyboard      bool `json:"keyboard"`
+	Gamepad       bool `json:"gamepad"`
 	MassStorage   bool `json:"mass_storage"`
 	SerialConsole bool `json:"serial_console"`
 }
@@ -66,6 +67,8 @@ type UsbGadget struct {
 	absMouseLock    sync.Mutex
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
+	gamepadHidFiles [MaxGamepads]*os.File
+	gamepadLocks    [MaxGamepads]sync.Mutex
 
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
@@ -186,6 +189,12 @@ func (u *UsbGadget) Close() error {
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 	}
+	for i := range u.gamepadHidFiles {
+		if u.gamepadHidFiles[i] != nil {
+			u.gamepadHidFiles[i].Close()
+			u.gamepadHidFiles[i] = nil
+		}
+	}
 
 	return nil
 }
@@ -211,4 +220,13 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile = nil
 	}
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+
+	for i := range u.gamepadHidFiles {
+		u.gamepadLocks[i].Lock()
+		if u.gamepadHidFiles[i] != nil {
+			u.gamepadHidFiles[i].Close()
+			u.gamepadHidFiles[i] = nil
+		}
+		unlockWithLog(&u.gamepadLocks[i], u.log, "gamepadHidFile reset")
+	}
 }

@@ -84,6 +84,26 @@ func rpcWheelReport(wheelY int8, wheelX int8) error {
 	})
 }
 
+// rpcGetGamepadSlotsAvailable returns how many gamepad slots are usable
+// given the currently-enabled keyboard / mouse functions.
+func rpcGetGamepadSlotsAvailable() int {
+	return gadget.GamepadSlotsAvailable()
+}
+
+func rpcGamepadReport(padIndex int, lx, ly, rx, ry, lt, rt uint8, buttons uint32) error {
+	return rpcHidReport(func() error {
+		return gadget.GamepadInputReport(padIndex, usbgadget.GamepadReport{
+			LeftStickX:   lx,
+			LeftStickY:   ly,
+			RightStickX:  rx,
+			RightStickY:  ry,
+			LeftTrigger:  lt,
+			RightTrigger: rt,
+			Buttons:      buttons,
+		})
+	})
+}
+
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
 	return gadget.GetKeyboardState()
 }

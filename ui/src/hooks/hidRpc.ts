@@ -10,6 +10,7 @@ export const HID_RPC_MESSAGE_TYPES = {
   MouseReport: 0x06,
   KeyboardMacroReport: 0x07,
   CancelKeyboardMacroReport: 0x08,
+  GamepadReport: 0x0a,
   KeyboardLedState: 0x32,
   KeysDownState: 0x33,
   KeyboardMacroState: 0x34,
@@ -386,6 +387,64 @@ export class MouseReportMessage extends RpcMessage {
       fromInt8ToUint8(this.dx),
       fromInt8ToUint8(this.dy),
       this.buttons,
+    ]);
+  }
+}
+
+// Mirrors MaxGamepads in internal/usbgadget/hid_gamepad.go.
+export const MAX_GAMEPADS = 4;
+
+export class GamepadReportMessage extends RpcMessage {
+  padIndex: number;
+  lx: number;
+  ly: number;
+  rx: number;
+  ry: number;
+  lt: number;
+  rt: number;
+  buttons: number;
+
+  constructor(
+    padIndex: number,
+    lx: number,
+    ly: number,
+    rx: number,
+    ry: number,
+    lt: number,
+    rt: number,
+    buttons: number,
+  ) {
+    super(HID_RPC_MESSAGE_TYPES.GamepadReport);
+    if (padIndex < 0 || padIndex >= MAX_GAMEPADS) {
+      throw new Error(`Pad index ${padIndex} is not within [0, ${MAX_GAMEPADS - 1}]`);
+    }
+    this.padIndex = padIndex;
+    this.lx = lx;
+    this.ly = ly;
+    this.rx = rx;
+    this.ry = ry;
+    this.lt = lt;
+    this.rt = rt;
+    this.buttons = buttons >>> 0;
+  }
+
+  marshal(): Uint8Array {
+    [this.lx, this.ly, this.rx, this.ry, this.lt, this.rt].forEach(v => {
+      if (!withinUint8Range(v)) {
+        throw new Error(`Gamepad axis/trigger ${v} is not within the uint8 range`);
+      }
+    });
+
+    return new Uint8Array([
+      this.messageType,
+      this.padIndex,
+      this.lx,
+      this.ly,
+      this.rx,
+      this.ry,
+      this.lt,
+      this.rt,
+      ...fromUint32toUint8(this.buttons),
     ]);
   }
 }

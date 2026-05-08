@@ -44,6 +44,13 @@ func (m *Message) String() string {
 			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeGamepadReport:
+		if len(m.d) < 11 {
+			return fmt.Sprintf("GamepadReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("GamepadReport{Pad: %d, LX: %d, LY: %d, RX: %d, RY: %d, LT: %d, RT: %d, Buttons: %d}",
+			m.d[0], m.d[1], m.d[2], m.d[3], m.d[4], m.d[5], m.d[6],
+			binary.BigEndian.Uint32(m.d[7:11]))
 	case TypeKeypressKeepAliveReport:
 		return "KeypressKeepAliveReport"
 	case TypeKeyboardMacroReport:
@@ -186,6 +193,37 @@ func (m *Message) MouseReport() (MouseReport, error) {
 		DX:     int8(m.d[0]),
 		DY:     int8(m.d[1]),
 		Button: uint8(m.d[2]),
+	}, nil
+}
+
+// GamepadReport is a single gamepad input frame transported over the binary
+// HID RPC channel.
+type GamepadReport struct {
+	PadIndex       uint8
+	LX, LY, RX, RY uint8
+	LT, RT         uint8
+	Buttons        uint32
+}
+
+// GamepadReport returns the gamepad report from the message.
+func (m *Message) GamepadReport() (GamepadReport, error) {
+	if m.t != TypeGamepadReport {
+		return GamepadReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	if len(m.d) != 11 {
+		return GamepadReport{}, fmt.Errorf("invalid gamepad report length: %d", len(m.d))
+	}
+
+	return GamepadReport{
+		PadIndex: m.d[0],
+		LX:       m.d[1],
+		LY:       m.d[2],
+		RX:       m.d[3],
+		RY:       m.d[4],
+		LT:       m.d[5],
+		RT:       m.d[6],
+		Buttons:  binary.BigEndian.Uint32(m.d[7:11]),
 	}, nil
 }
 

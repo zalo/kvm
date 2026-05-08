@@ -57,11 +57,18 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"absolute_mouse": absoluteMouseConfig,
 	// relative mouse HID
 	"relative_mouse": relativeMouseConfig,
+	// gamepad HID slots are inserted in init() below.
 	// mass storage
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
 	// serial console (CDC-ACM)
 	"serial_console": serialConsoleConfig,
+}
+
+func init() {
+	for i := 0; i < MaxGamepads; i++ {
+		defaultGadgetConfig[gamepadConfigKey(i)] = gamepadConfigs[i]
+	}
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
@@ -79,8 +86,41 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 	case "serial_console":
 		return u.enabledDevices.SerialConsole
 	default:
+		for i := 0; i < MaxGamepads; i++ {
+			if itemKey == gamepadConfigKey(i) {
+				return u.enabledDevices.Gamepad && i < u.GamepadSlotsAvailable()
+			}
+		}
 		return true
 	}
+}
+
+// GamepadSlotsAvailable returns how many independent HID gamepad gadgets
+// can be exposed alongside the currently-enabled primary HID functions
+// (keyboard, absolute mouse, relative mouse), bounded by MaxGamepads.
+// The kernel's HIDG_MAX_INSTANCES caps the total HID gadget count.
+func (u *UsbGadget) GamepadSlotsAvailable() int {
+	if !u.enabledDevices.Gamepad {
+		return 0
+	}
+	primary := 0
+	if u.enabledDevices.Keyboard {
+		primary++
+	}
+	if u.enabledDevices.AbsoluteMouse {
+		primary++
+	}
+	if u.enabledDevices.RelativeMouse {
+		primary++
+	}
+	free := hidInstanceCap - primary
+	if free < 0 {
+		free = 0
+	}
+	if free > MaxGamepads {
+		free = MaxGamepads
+	}
+	return free
 }
 
 func (u *UsbGadget) loadGadgetConfig() {
