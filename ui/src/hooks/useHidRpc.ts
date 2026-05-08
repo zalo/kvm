@@ -314,7 +314,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     };
 
     const errorHandler = (e: Event) => {
-      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${e}`);
+      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}':`, e);
     };
 
     rpcHidChannel.addEventListener("message", messageHandler);
