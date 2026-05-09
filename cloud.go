@@ -474,21 +474,12 @@ func handleSessionRequest(
 		return err
 	}
 	if currentSession != nil {
+		// Multi-tenant: keep existing peers alive; just tell them another viewer joined.
 		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		gadget.CancelAllAutoReleaseTimers()
-		_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
 	}
 
 	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
 	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
-
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
 
 	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})

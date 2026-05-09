@@ -20,7 +20,6 @@ var (
 	audioInitialized   bool
 	activeConnections  atomic.Int32
 	audioLogger        zerolog.Logger
-	currentAudioTrack  *webrtc.TrackLocalStaticSample
 	currentInputTrack  atomic.Pointer[string]
 	audioOutputEnabled atomic.Bool
 	audioInputEnabled  atomic.Bool
@@ -53,11 +52,9 @@ func startAudio() error {
 
 		outputSource = audio.NewCgoOutputSource(alsaDevice)
 
-		if currentAudioTrack != nil {
-			outputRelay = audio.NewOutputRelay(outputSource, currentAudioTrack)
-			if err := outputRelay.Start(); err != nil {
-				audioLogger.Error().Err(err).Msg("Failed to start audio output relay")
-			}
+		outputRelay = audio.NewOutputRelay(outputSource, sessions.BroadcastAudioSample)
+		if err := outputRelay.Start(); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to start audio output relay")
 		}
 	}
 
@@ -132,24 +129,11 @@ func onWebRTCDisconnect() {
 	}
 }
 
-func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
-	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
-	currentAudioTrack = audioTrack
-
-	if outputRelay != nil {
-		outputRelay.Stop()
-		outputRelay = nil
-	}
-
-	if outputSource != nil {
-		outputRelay = audio.NewOutputRelay(outputSource, audioTrack)
-		if err := outputRelay.Start(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start output relay")
-		}
-	}
-}
+// setAudioTrack is a no-op in the multi-tenant model; the relay broadcasts to
+// every active session via sessions.BroadcastAudioSample, so per-session track
+// registration is implicit (tracks live on Session and the registry iterates).
+// Kept for call-site compatibility with the upstream audio PR.
+func setAudioTrack(_ *webrtc.TrackLocalStaticSample) {}
 
 func setPendingInputTrack(track *webrtc.TrackRemote) {
 	trackID := track.ID()

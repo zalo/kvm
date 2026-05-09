@@ -17,12 +17,14 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
 
 type Session struct {
+	ID                       string
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	AudioTrack               *webrtc.TrackLocalStaticSample
@@ -187,6 +189,11 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 			}
 		}
 	}()
+
+	// Register with the multi-tenant registry now that the video track exists.
+	// Audio track was already attached in newSession; both must be present
+	// before the encoder fans out samples to this session.
+	sessions.Add(s)
 
 	// Set the remote SessionDescription
 	if err = s.peerConnection.SetRemoteDescription(offer); err != nil {
@@ -355,7 +362,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	session := &Session{peerConnection: peerConnection}
+	session := &Session{ID: uuid.NewString(), peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
 	session.initKeysDownStateQueue()
@@ -481,17 +488,16 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
-			// Only clear currentSession if this is actually the current session
-			// This prevents race condition where old session closes after new one connects
-			if session == currentSession {
-				// Cancel any ongoing keyboard report multi when session closes
+			sessions.Remove(session.ID)
+			// When the last session drops, clear pending host input so we don't leave
+			// keys/macros stuck after a disconnect. Multi-tenant: only do this when
+			// no peers remain.
+			if sessions.Count() == 0 {
 				cancelKeyboardMacro()
-				// Stop pending auto-release timers (avoids unnecessary work),
-				// then clear all keys. keyboardMutex inside KeyboardReport
-				// serialises with any auto-release goroutine already in flight,
-				// so the clear is guaranteed to be the final state.
 				gadget.CancelAllAutoReleaseTimers()
 				_ = rpcKeyboardReport(0, keyboardClearStateKeys)
+			}
+			if session == currentSession {
 				currentSession = nil
 			}
 			// Stop RPC processor
@@ -531,13 +537,14 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func onActiveSessionsChanged() {
-	notifyFailsafeMode(currentSession)
+	notifyFailsafeMode(sessions.Primary())
 	requestDisplayUpdate(false, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
-	notifyFailsafeMode(currentSession)
-	if currentSession != nil && currentSession.codecMimeType == webrtc.MimeTypeH265 {
+	primary := sessions.Primary()
+	notifyFailsafeMode(primary)
+	if primary != nil && primary.codecMimeType == webrtc.MimeTypeH265 {
 		_ = nativeInstance.VideoSetCodecType(1)
 	} else {
 		_ = nativeInstance.VideoSetCodecType(0)

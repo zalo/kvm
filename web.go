@@ -235,7 +235,10 @@ func setupRouter() *gin.Engine {
 	return r
 }
 
-// TODO: support multiple sessions?
+// currentSession tracks the most-recently-connected session for legacy
+// state-notification code paths. Multi-tenant streaming uses the global
+// `sessions` registry (webrtc_registry.go) for fanout; existing peers are
+// kept alive when a new one joins.
 var currentSession *Session
 
 func handleWebRTCSession(c *gin.Context) {
@@ -258,18 +261,10 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 	if currentSession != nil {
+		// Multi-tenant: don't close the existing peer; just notify it that
+		// another viewer joined so it can update its UI session list.
 		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		gadget.CancelAllAutoReleaseTimers()
-		_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
 	}
-
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
 
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
