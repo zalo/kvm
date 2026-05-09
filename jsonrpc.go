@@ -1419,4 +1419,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"getSharingPasswordSet":      {Func: rpcGetSharingPasswordSet},
 	"setMultiPlayerGamepad":      {Func: rpcSetMultiPlayerGamepad, Params: []string{"enabled"}},
 	"getMultiPlayerGamepad":      {Func: rpcGetMultiPlayerGamepad},
+	"getActiveSessionCount":      {Func: rpcGetActiveSessionCount},
+	"kickAllClients":             {Func: rpcKickAllClients},
+	"startTunnel":                {Func: rpcStartTunnel},
+	"stopTunnel":                 {Func: rpcStopTunnel},
+	"getTunnelStatus":            {Func: rpcGetTunnelStatus},
 }

@@ -422,6 +422,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
+	// Audio is sendonly in this fork: HDMI → browser is enabled, but the
+	// browser microphone path is disabled (gaming co-op users run Discord
+	// alongside, which gives them lower-latency voice than routing through
+	// the JetKVM USB audio gadget).
 	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(
 		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
 		"audio",
@@ -431,26 +435,14 @@ func newSession(config SessionConfig) (*Session, error) {
 		scopedLogger.Warn().Err(err).Msg("Failed to create AudioTrack (non-fatal)")
 	} else {
 		_, err = peerConnection.AddTransceiverFromTrack(session.AudioTrack, webrtc.RTPTransceiverInit{
-			Direction: webrtc.RTPTransceiverDirectionSendrecv,
+			Direction: webrtc.RTPTransceiverDirectionSendonly,
 		})
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Failed to add AudioTrack transceiver (non-fatal)")
 			session.AudioTrack = nil
 		} else {
 			setAudioTrack(session.AudioTrack)
-
-			peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-				scopedLogger.Info().
-					Str("codec", track.Codec().MimeType).
-					Str("track_id", track.ID()).
-					Msg("Received incoming audio track from browser")
-
-				// Store track for connection when audio starts
-				// OnTrack fires during SDP exchange, before ICE connection completes
-				setPendingInputTrack(track)
-			})
-
-			scopedLogger.Info().Msg("Audio tracks configured successfully")
+			scopedLogger.Info().Msg("Audio output (sendonly) configured")
 		}
 	}
 

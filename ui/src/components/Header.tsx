@@ -25,6 +25,9 @@ interface NavbarProps {
   picture?: string;
   kvmName?: string;
   hostname?: string | null;
+  // Active WebRTC viewer count from the multi-tenant registry. Null while
+  // we haven't fetched yet (or for guest sessions whose RPC fails).
+  viewerCount?: number | null;
 }
 
 export default function DashboardNavbar({
@@ -35,6 +38,7 @@ export default function DashboardNavbar({
   picture,
   kvmName,
   hostname,
+  viewerCount,
 }: NavbarProps) {
   const peerConnectionState = useRTCStore(state => state.peerConnectionState);
   const setUser = useUserStore(state => state.setUser);
@@ -67,6 +71,15 @@ export default function DashboardNavbar({
             {hostname && (
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                 {hostname}
+              </span>
+            )}
+            {typeof viewerCount === "number" && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+                title="Active WebRTC viewers (multi-tenant streaming)"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                {viewerCount} {viewerCount === 1 ? "viewer" : "viewers"}
               </span>
             )}
 

@@ -59,7 +59,7 @@ import { useGamepad } from "@hooks/useGamepad";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
-import { isLinuxDesktop, isSecureContext } from "@/utils";
+import { isLinuxDesktop } from "@/utils";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -152,8 +152,7 @@ export default function KvmIdRoute() {
     isEmbedMode,
     setEmbedMode,
   } = useUiStore();
-  const { microphoneEnabled, setMicrophoneEnabled, audioInputAutoEnable, setAudioInputAutoEnable } =
-    useSettingsStore();
+  // Microphone-related settings are unused in this fork; no destructure.
   const [queryParams, setQueryParams] = useSearchParams();
   const hasEmbedParam = queryParams.has("embed");
 
@@ -182,7 +181,6 @@ export default function KvmIdRoute() {
     rpcDataChannel,
     setTransceiver,
     setAudioTransceiver,
-    audioTransceiver,
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
@@ -600,7 +598,9 @@ export default function KvmIdRoute() {
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
 
-    const audioTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
+    // Audio is recvonly in this fork: browser plays HDMI audio, but its
+    // microphone is never sent. Co-op players use Discord for voice.
+    const audioTrans = pc.addTransceiver("audio", { direction: "recvonly" });
     setAudioTransceiver(audioTrans);
 
     const rpcDataChannel = pc.createDataChannel("rpc");
@@ -687,48 +687,10 @@ export default function KvmIdRoute() {
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
 
-  useEffect(() => {
-    if (!audioTransceiver || !peerConnection) return;
-
-    if (microphoneEnabled) {
-      navigator.mediaDevices
-        ?.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 2,
-          },
-        })
-        .then(stream => {
-          const audioTrack = stream.getAudioTracks()[0];
-          if (audioTrack && audioTransceiver.sender) {
-            audioTransceiver.sender.replaceTrack(audioTrack);
-          }
-        })
-        .catch(() => {
-          setMicrophoneEnabled(false);
-        });
-    } else {
-      if (audioTransceiver.sender.track) {
-        audioTransceiver.sender.track.stop();
-        audioTransceiver.sender.replaceTrack(null);
-      }
-    }
-  }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
-
-  useEffect(() => {
-    if (!audioTransceiver || !peerConnection || !audioInputAutoEnable || microphoneEnabled) return;
-    if (isSecureContext()) {
-      setMicrophoneEnabled(true);
-    }
-  }, [
-    audioInputAutoEnable,
-    audioTransceiver,
-    peerConnection,
-    microphoneEnabled,
-    setMicrophoneEnabled,
-  ]);
+  // Microphone capture and the auto-enable effect were removed in this
+  // fork — the WebRTC audio transceiver is sendonly (HDMI → browser),
+  // so a browser mic track has nowhere to go. Co-op players use Discord
+  // for voice chat instead.
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
@@ -950,14 +912,23 @@ export default function KvmIdRoute() {
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
-  // Load audio input auto-enable preference from backend
+  // The audioInputAutoEnable preference is dead in this fork (no mic
+  // capture path), so we don't bother fetching it.
+
+  // Poll active session count every 5s for the "viewers" badge in the header.
+  // Guests' RPC calls will fail silently here; only admin sees the count.
+  const [viewerCount, setViewerCount] = useState<number | null>(null);
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setAudioInputAutoEnable(resp.result as boolean);
-    });
-  }, [rpcDataChannel?.readyState, send, setAudioInputAutoEnable]);
+    const tick = () =>
+      send("getActiveSessionCount", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+        setViewerCount(resp.result as number);
+      });
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  }, [rpcDataChannel?.readyState, send]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
@@ -1183,6 +1154,7 @@ export default function KvmIdRoute() {
               picture={user?.picture}
               kvmName={deviceName ?? m.jetkvm_device()}
               hostname={displayHostname}
+              viewerCount={viewerCount}
             />
           )}
 

@@ -71,6 +71,7 @@ func Main() {
 	initNative(systemVersionLocal, appVersionLocal)
 	initDisplay()
 	initAudio()
+	initTunnel()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 

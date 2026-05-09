@@ -1,23 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { useSettingsStore } from "@/hooks/stores";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import Checkbox from "@components/Checkbox";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
-import { isSecureContext } from "@/utils";
 
 export default function AudioPopover() {
   const { send } = useJsonRpc();
-  const { microphoneEnabled, setMicrophoneEnabled } = useSettingsStore();
   const [audioOutputEnabled, setAudioOutputEnabled] = useState<boolean>(true);
-  const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
-  const [micLoading, setMicLoading] = useState(false);
-  const isHttps = isSecureContext();
 
   useEffect(() => {
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
@@ -25,15 +19,6 @@ export default function AudioPopover() {
         console.error("Failed to load audio output enabled:", resp.error);
       } else {
         setAudioOutputEnabled(resp.result as boolean);
-      }
-    });
-
-    send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error("Failed to load USB devices:", resp.error);
-      } else {
-        const usbDevices = resp.result as { audio: boolean };
-        setUsbAudioEnabled(usbDevices.audio || false);
       }
     });
   }, [send]);
@@ -60,24 +45,6 @@ export default function AudioPopover() {
     [send],
   );
 
-  const handleMicrophoneToggle = useCallback(
-    (enabled: boolean) => {
-      setMicLoading(true);
-      send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
-        setMicLoading(false);
-        if ("error" in resp) {
-          const errorMsg = enabled
-            ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
-            : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
-          notifications.error(errorMsg);
-        } else {
-          setMicrophoneEnabled(enabled);
-        }
-      });
-    },
-    [send, setMicrophoneEnabled],
-  );
-
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
@@ -99,26 +66,9 @@ export default function AudioPopover() {
               />
             </SettingsItem>
 
-            {usbAudioEnabled && (
-              <>
-                <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-
-                <SettingsItem
-                  loading={micLoading}
-                  title={m.audio_microphone_title()}
-                  description={m.audio_microphone_description()}
-                  badge={!isHttps ? m.audio_https_only() : undefined}
-                  badgeVariant="info"
-                  badgeLink={!isHttps ? "settings/access" : undefined}
-                >
-                  <Checkbox
-                    checked={microphoneEnabled}
-                    disabled={!isHttps}
-                    onChange={e => handleMicrophoneToggle(e.target.checked)}
-                  />
-                </SettingsItem>
-              </>
-            )}
+            {/* Microphone input is intentionally disabled in this fork —
+                co-op players run Discord for voice chat. The output ↑
+                is the only audio path. */}
           </div>
         </div>
       </div>

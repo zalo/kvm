@@ -18,3 +18,5 @@ ui/reports
 
 # compiled remote-agent test binary
 e2e/remote-agent/remote-agent
+internal/tunnel/dist/cloudflared
+internal/tunnel/dist/cloudflared.commit

@@ -58,19 +58,13 @@ func startAudio() error {
 		}
 	}
 
-	// Start input audio if not running, USB audio enabled, and input enabled
-	ensureConfigLoaded()
-	if inputSource == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
-		alsaPlaybackDevice := "hw:1,0" // USB speakers
-
-		// Create CGO audio source
-		inputSource = audio.NewCgoInputSource(alsaPlaybackDevice)
-
-		inputRelay = audio.NewInputRelay(inputSource)
-		if err := inputRelay.Start(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start input relay")
-		}
-	}
+	// Audio input (browser mic → USB speakers) is intentionally disabled
+	// in this fork. Co-op players run Discord for voice chat — much lower
+	// latency than routing through the JetKVM USB audio gadget. Keeping
+	// the audioInputEnabled flag and stop helpers around so the RPC
+	// surface stays compatible with upstream call sites, but we never
+	// start the input source or relay.
+	_ = config.UsbDevices
 
 	return nil
 }

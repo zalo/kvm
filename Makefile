@@ -18,6 +18,11 @@ AUDIO_LIBS_DIR ?= /opt/jetkvm-audio-libs
 build_audio_deps:
 	bash .devcontainer/install_audio_deps.sh $(ALSA_VERSION) $(OPUS_VERSION)
 
+# Cross-compile the cloudflared submodule into internal/tunnel/dist/cloudflared.
+# That output gets bundled into jetkvm_app via go:embed at the next go build.
+build_cloudflared:
+	bash scripts/build_cloudflared.sh
+
 
 # Audio library versions
 ALSA_VERSION ?= 1.2.14
@@ -213,7 +218,7 @@ build_dev:
 		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
-_build_dev_inner: build_native build_audio_deps
+_build_dev_inner: build_native build_audio_deps build_cloudflared
 	@echo "Building... $(VERSION_DEV)"
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
@@ -367,7 +372,7 @@ build_release:
 		$(MAKE) _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
-_build_release_inner: build_native build_audio_deps
+_build_release_inner: build_native build_audio_deps build_cloudflared
 	@echo "Building release..."
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \

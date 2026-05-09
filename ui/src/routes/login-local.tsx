@@ -128,13 +128,16 @@ export default function LoginLocalRoute() {
                     textAlign="center"
                   />
 
-                  <div className="mt-4 flex justify-start text-xs text-slate-500 dark:text-slate-400">
+                  <div className="mt-4 flex justify-between text-xs text-slate-500 dark:text-slate-400">
                     <ExtLink
                       href="https://jetkvm.com/docs/networking/local-access#reset-password"
                       className="hover:underline"
                     >
                       {m.login_forgot_password()}
                     </ExtLink>
+                    <a href="/share-login" className="hover:underline">
+                      Have a sharing password? Join as guest →
+                    </a>
                   </div>
                 </Form>
               </Fieldset>

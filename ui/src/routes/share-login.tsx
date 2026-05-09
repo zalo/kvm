@@ -67,6 +67,11 @@ export default function ShareLoginRoute() {
                 <p className="font-medium text-slate-600 dark:text-slate-400">
                   Enter the sharing password to view and interact with this JetKVM.
                 </p>
+                {typeof window !== "undefined" && window.location.hostname && (
+                  <p className="font-mono text-xs text-slate-500 dark:text-slate-500">
+                    Connecting to <span className="font-semibold">{window.location.hostname}</span>
+                  </p>
+                )}
               </div>
 
               <Fieldset className="space-y-12">

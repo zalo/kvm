@@ -136,3 +136,28 @@ func rpcSetMultiPlayerGamepad(enabled bool) error {
 func rpcGetMultiPlayerGamepad() (bool, error) {
 	return config.MultiPlayerGamepad, nil
 }
+
+// rpcGetActiveSessionCount returns how many WebRTC peers are currently
+// connected. The admin UI shows this as a "viewers" badge.
+func rpcGetActiveSessionCount() (int, error) {
+	return sessions.Count(), nil
+}
+
+// rpcKickAllClients closes every peer connection in the registry. The
+// per-session ICE-Closed handler removes them from the registry, releases
+// gamepad slots, and clears HID state. Admin-only — wired to the
+// "Kick all clients" button on the Sharing settings page.
+func rpcKickAllClients() error {
+	for _, s := range sessions.snapshot() {
+		if s.peerConnection != nil {
+			_ = s.peerConnection.Close()
+		}
+	}
+	// Also rotate the share token so any in-flight signaling attempts from
+	// kicked guests (using the cookie they already have) are rejected
+	// before a fresh login.
+	if config.SharingPasswordHash != "" {
+		sharingAuthToken = uuid.New().String()
+	}
+	return nil
+}
