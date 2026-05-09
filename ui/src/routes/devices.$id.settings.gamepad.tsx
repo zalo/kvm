@@ -29,6 +29,7 @@ export default function SettingsGamepadRoute() {
   const { activeGamepads } = useGamepad(gamepadPassthroughEnabled);
   const [usbDevices, setUsbDevices] = useState<UsbDevicesState | null>(null);
   const [slotsAvailable, setSlotsAvailable] = useState<number | null>(null);
+  const [multiPlayer, setMultiPlayer] = useState<boolean>(false);
 
   const refreshState = useCallback(() => {
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
@@ -39,7 +40,24 @@ export default function SettingsGamepadRoute() {
       if ("error" in resp) return;
       setSlotsAvailable(resp.result as number);
     });
+    send("getMultiPlayerGamepad", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setMultiPlayer(resp.result as boolean);
+    });
   }, [send]);
+
+  const handleMultiPlayerToggle = (enabled: boolean) => {
+    setMultiPlayer(enabled);
+    send("setMultiPlayerGamepad", { enabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to update multi-player mode: ${resp.error.data || "unknown error"}`,
+        );
+        // Revert optimistic state on failure
+        refreshState();
+      }
+    });
+  };
 
   useEffect(() => {
     refreshState();
@@ -129,6 +147,13 @@ export default function SettingsGamepadRoute() {
             onClick={restoreDefaults}
           />
         </div>
+      </SettingsItem>
+
+      <SettingsItem
+        title="Co-op multi-player"
+        description="When on, each connected viewer claims its own HID gamepad slot (up to 4 simultaneous players). When off, every viewer's gamepad input goes to slot 0 (single-player; last input wins). Pairs with the sharing password under Settings → Sharing so guests can connect from their own browsers."
+      >
+        <Checkbox checked={multiPlayer} onChange={e => handleMultiPlayerToggle(e.target.checked)} />
       </SettingsItem>
 
       <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">

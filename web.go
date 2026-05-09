@@ -209,16 +209,18 @@ func setupRouter() *gin.Engine {
 		// WebRTC signaling endpoints are gated by webrtcAuthMiddleware so guests
 		// holding a valid shareToken cookie (issued by /auth/share-login) can
 		// connect alongside the admin. Admin authToken still grants access.
+		// /device is also exposed here so the SPA loader can verify a guest
+		// session (it returns innocuous device metadata, no secrets).
 		webrtcGroup := r.Group("/")
 		webrtcGroup.Use(webrtcAuthMiddleware())
 		webrtcGroup.POST("/webrtc/session", handleWebRTCSession)
 		webrtcGroup.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		webrtcGroup.GET("/device", handleDevice)
 		// Public endpoint: guests POST the sharing password here to obtain a
 		// shareToken cookie. Rate-limited per-IP, like /auth/login.
 		r.POST("/auth/share-login", handleSharingLogin)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
-		protected.GET("/device", handleDevice)
 		protected.POST("/auth/logout", handleLogout)
 
 		protected.POST("/auth/password-local", handleCreatePassword)
@@ -268,12 +270,10 @@ func handleWebRTCSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
-	if currentSession != nil {
-		// Multi-tenant: don't close the existing peer; just notify it that
-		// another viewer joined so it can update its UI session list.
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-	}
-
+	// Multi-tenant: keep all existing peers running. We deliberately do not
+	// emit otherSessionConnected here — that event used to drive a
+	// "take over this session?" modal that no longer makes sense when N
+	// viewers are expected to share the stream.
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }

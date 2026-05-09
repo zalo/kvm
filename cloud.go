@@ -473,10 +473,9 @@ func handleSessionRequest(
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err
 	}
-	if currentSession != nil {
-		// Multi-tenant: keep existing peers alive; just tell them another viewer joined.
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-	}
+	// Multi-tenant: keep all existing peers running and don't emit the legacy
+	// otherSessionConnected event (which drove a take-over modal that no
+	// longer applies when multiple viewers share the stream).
 
 	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
 	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")

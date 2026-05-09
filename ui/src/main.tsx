@@ -22,6 +22,7 @@ import NotFoundPage from "@components/NotFoundPage";
 import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import WelcomeRoute, { DeviceStatus } from "@routes/welcome-local";
 import LoginLocalRoute from "@routes/login-local";
+import ShareLoginRoute from "@routes/share-login";
 import WelcomeLocalModeRoute from "@routes/welcome-local.mode";
 import WelcomeLocalPasswordRoute from "@routes/welcome-local.password";
 import AdoptRoute from "@routes/adopt";
@@ -45,6 +46,7 @@ const SettingsAdvancedRoute = lazy(() => import("@routes/devices.$id.settings.ad
 const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.hardware"));
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
 const SettingsAudioRoute = lazy(() => import("@routes/devices.$id.settings.audio"));
+const SettingsSharingRoute = lazy(() => import("@routes/devices.$id.settings.sharing"));
 const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
 const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
 const SettingsGeneralRebootRoute = lazy(
@@ -195,6 +197,10 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
           element: <SettingsAudioRoute />,
         },
         {
+          path: "sharing",
+          element: <SettingsSharingRoute />,
+        },
+        {
           path: "appearance",
           element: <SettingsAppearanceRoute />,
         },
@@ -242,6 +248,11 @@ if (isOnDevice) {
       element: <LoginLocalRoute />,
       action: LoginLocalRoute.action,
       loader: LoginLocalRoute.loader,
+    },
+    {
+      path: "/share-login",
+      element: <ShareLoginRoute />,
+      action: ShareLoginRoute.action,
     },
     getDeviceRoute({
       path: "/",

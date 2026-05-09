@@ -832,9 +832,8 @@ export default function KvmIdRoute() {
   const { navigateTo } = useDeviceUiNavigation();
 
   function onJsonRpcRequest(resp: JsonRpcRequest) {
-    if (resp.method === "otherSessionConnected") {
-      navigateTo("/other-session");
-    }
+    // Multi-tenant: backend no longer emits otherSessionConnected; multiple
+    // viewers are expected to share the stream concurrently.
 
     if (resp.method === "usbState") {
       const usbState = resp.params as unknown as USBStates;
