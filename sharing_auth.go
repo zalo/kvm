@@ -53,19 +53,48 @@ func handleSharingLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
+// authRoleContextKey is the gin.Context key that webrtcAuthMiddleware
+// uses to publish which auth path the request took. Downstream handlers
+// (handleWebRTCSession, handleLocalWebRTCSignal) read this to tag the
+// resulting Session as admin or guest, which gates JSON-RPC dispatch.
+const authRoleContextKey = "jetkvm.auth.role"
+
+const (
+	authRoleAdmin = "admin"
+	authRoleGuest = "guest"
+)
+
+// AuthRoleFromContext returns "admin", "guest", or "" depending on which
+// cookie satisfied webrtcAuthMiddleware. Returns "admin" for noPassword
+// mode (no authentication at all — anyone on the LAN gets admin, same
+// as upstream JetKVM).
+func AuthRoleFromContext(c *gin.Context) string {
+	if v, ok := c.Get(authRoleContextKey); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 // webrtcAuthMiddleware accepts EITHER an admin authToken OR a shareToken
 // minted by handleSharingLogin. Admin always wins; sharing is allowed only
 // when SharingPasswordHash is set (otherwise this collapses to the regular
 // admin-only path so we don't accidentally widen access).
+//
+// On success the middleware publishes the auth role into the gin context
+// so the downstream session handler can mark Session.IsAdmin accordingly.
 func webrtcAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if config.LocalAuthMode == "noPassword" {
+			c.Set(authRoleContextKey, authRoleAdmin)
 			c.Next()
 			return
 		}
 
 		// Admin path: same check as protectedMiddleware.
 		if t, err := c.Cookie("authToken"); err == nil && t != "" && t == config.LocalAuthToken {
+			c.Set(authRoleContextKey, authRoleAdmin)
 			c.Next()
 			return
 		}
@@ -74,6 +103,7 @@ func webrtcAuthMiddleware() gin.HandlerFunc {
 		// presented shareToken matches the in-memory token from this boot.
 		if config.SharingPasswordHash != "" && sharingAuthToken != "" {
 			if t, err := c.Cookie("shareToken"); err == nil && t == sharingAuthToken {
+				c.Set(authRoleContextKey, authRoleGuest)
 				c.Next()
 				return
 			}

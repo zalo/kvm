@@ -138,6 +138,28 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	// Multi-tenant authorization: guests (sharing-password sessions) may
+	// only call handlers explicitly tagged GuestAllowed. Everything else
+	// (config writes, password mgmt, network/TLS/MQTT settings, kick,
+	// tunnel control, factory reset, etc.) is admin-only.
+	if session != nil && !session.IsAdmin && !handler.GuestAllowed {
+		scopedLogger.Warn().
+			Str("method", request.Method).
+			Str("session", session.ID).
+			Msg("guest blocked from admin-only RPC")
+		errorResponse := JSONRPCResponse{
+			JSONRPC: "2.0",
+			Error: map[string]any{
+				"code":    -32001,
+				"message": "Permission denied",
+				"data":    "this method is restricted to admin sessions",
+			},
+			ID: request.ID,
+		}
+		writeJSONRPCResponse(errorResponse, session)
+		return
+	}
+
 	result, err := callRPCHandler(scopedLogger, handler, request.Params)
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
@@ -450,6 +472,11 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+	// GuestAllowed must be set to true for any handler that a non-admin
+	// (sharing-password) session may invoke over its WebRTC data channel.
+	// Default false = admin-only. Marking a handler GuestAllowed widens
+	// the trust surface — only do it for HID input + read-only state.
+	GuestAllowed bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -1297,31 +1324,37 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 	return nil
 }
 
+// rpcHandlers maps method names to handlers. GuestAllowed: true is the
+// authorization knob — handlers without it can only be called by sessions
+// authenticated with the admin authToken (i.e. local admin login or the
+// cloud websocket). Sharing-password (guest) sessions get HID input + a
+// curated set of read-only state queries so the device view can render
+// for them; everything that mutates config or hardware stays admin-only.
 var rpcHandlers = map[string]RPCHandler{
-	"ping":                       {Func: rpcPing},
+	"ping":                       {Func: rpcPing, GuestAllowed: true},
 	"reboot":                     {Func: rpcReboot, Params: []string{"force"}},
-	"getDeviceID":                {Func: rpcGetDeviceID},
+	"getDeviceID":                {Func: rpcGetDeviceID, GuestAllowed: true},
 	"deregisterDevice":           {Func: rpcDeregisterDevice},
 	"getCloudState":              {Func: rpcGetCloudState},
 	"getNetworkState":            {Func: rpcGetNetworkState},
 	"getNetworkSettings":         {Func: rpcGetNetworkSettings},
 	"setNetworkSettings":         {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
 	"renewDHCPLease":             {Func: rpcRenewDHCPLease},
-	"getKeyboardLedState":        {Func: rpcGetKeyboardLedState},
-	"getKeyDownState":            {Func: rpcGetKeysDownState},
-	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
-	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}},
-	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
-	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
-	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
-	"gamepadReport":              {Func: rpcGamepadReport, Params: []string{"padIndex", "lx", "ly", "rx", "ry", "lt", "rt", "buttons"}},
-	"getGamepadSlotsAvailable":   {Func: rpcGetGamepadSlotsAvailable},
-	"getVideoState":              {Func: rpcGetVideoState},
-	"getUSBState":                {Func: rpcGetUSBState},
+	"getKeyboardLedState":        {Func: rpcGetKeyboardLedState, GuestAllowed: true},
+	"getKeyDownState":            {Func: rpcGetKeysDownState, GuestAllowed: true},
+	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}, GuestAllowed: true},
+	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}, GuestAllowed: true},
+	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}, GuestAllowed: true},
+	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}, GuestAllowed: true},
+	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}, GuestAllowed: true},
+	"gamepadReport":              {Func: rpcGamepadReport, Params: []string{"padIndex", "lx", "ly", "rx", "ry", "lt", "rt", "buttons"}, GuestAllowed: true},
+	"getGamepadSlotsAvailable":   {Func: rpcGetGamepadSlotsAvailable, GuestAllowed: true},
+	"getVideoState":              {Func: rpcGetVideoState, GuestAllowed: true},
+	"getUSBState":                {Func: rpcGetUSBState, GuestAllowed: true},
 	"unmountImage":               {Func: rpcUnmountImage},
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
 	"setJigglerState":            {Func: rpcSetJigglerState, Params: []string{"enabled"}},
-	"getJigglerState":            {Func: rpcGetJigglerState},
+	"getJigglerState":            {Func: rpcGetJigglerState, GuestAllowed: true},
 	"setJigglerConfig":           {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
 	"getJigglerConfig":           {Func: rpcGetJigglerConfig},
 	"getTimezones":               {Func: rpcGetTimezones},
@@ -1332,7 +1365,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setVideoCodecPreference":    {Func: rpcSetVideoCodecPreference, Params: []string{"codec"}},
 	"getAutoUpdateState":         {Func: rpcGetAutoUpdateState},
 	"setAutoUpdateState":         {Func: rpcSetAutoUpdateState, Params: []string{"enabled"}},
-	"getEDID":                    {Func: rpcGetEDID},
+	"getEDID":                    {Func: rpcGetEDID, GuestAllowed: true},
 	"setEDID":                    {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
@@ -1352,7 +1385,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getTLSState":                {Func: rpcGetTLSState},
 	"setTLSState":                {Func: rpcSetTLSState, Params: []string{"state"}},
 	"setMassStorageMode":         {Func: rpcSetMassStorageMode, Params: []string{"mode"}},
-	"getMassStorageMode":         {Func: rpcGetMassStorageMode},
+	"getMassStorageMode":         {Func: rpcGetMassStorageMode, GuestAllowed: true},
 	"isUpdatePending":            {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":       {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":       {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
@@ -1370,7 +1403,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setWakeOnLanDevices":        {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"factoryReset":               {Func: rpcFactoryReset},
 	"setDisplayRotation":         {Func: rpcSetDisplayRotation, Params: []string{"params"}},
-	"getDisplayRotation":         {Func: rpcGetDisplayRotation},
+	"getDisplayRotation":         {Func: rpcGetDisplayRotation, GuestAllowed: true},
 	"setBacklightSettings":       {Func: rpcSetBacklightSettings, Params: []string{"params"}},
 	"getBacklightSettings":       {Func: rpcGetBacklightSettings},
 	"getDCPowerState":            {Func: rpcGetDCPowerState},
@@ -1378,7 +1411,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDCRestoreState":          {Func: rpcSetDCRestoreState, Params: []string{"state"}},
 	"getActiveExtension":         {Func: rpcGetActiveExtension},
 	"setActiveExtension":         {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
-	"getATXState":                {Func: rpcGetATXState},
+	"getATXState":                {Func: rpcGetATXState, GuestAllowed: true},
 	"setATXPowerAction":          {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":          {Func: rpcGetSerialSettings},
 	"setSerialSettings":          {Func: rpcSetSerialSettings, Params: []string{"settings"}},
@@ -1387,13 +1420,13 @@ var rpcHandlers = map[string]RPCHandler{
 	"setSerialCommandHistory":    {Func: rpcSetSerialCommandHistory, Params: []string{"commandHistory"}},
 	"deleteSerialCommandHistory": {Func: rpcDeleteSerialCommandHistory},
 	"setTerminalPaused":          {Func: rpcSetTerminalPaused, Params: []string{"terminalPaused"}},
-	"getUsbDevices":              {Func: rpcGetUsbDevices},
+	"getUsbDevices":              {Func: rpcGetUsbDevices, GuestAllowed: true},
 	"setUsbDevices":              {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":          {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
 	"setCloudUrl":                {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
-	"getKeyboardLayout":          {Func: rpcGetKeyboardLayout},
+	"getKeyboardLayout":          {Func: rpcGetKeyboardLayout, GuestAllowed: true},
 	"setKeyboardLayout":          {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
-	"getKeyboardMacros":          {Func: getKeyboardMacros},
+	"getKeyboardMacros":          {Func: getKeyboardMacros, GuestAllowed: true},
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
@@ -1418,8 +1451,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setSharingPassword":         {Func: rpcSetSharingPassword, Params: []string{"password"}},
 	"getSharingPasswordSet":      {Func: rpcGetSharingPasswordSet},
 	"setMultiPlayerGamepad":      {Func: rpcSetMultiPlayerGamepad, Params: []string{"enabled"}},
-	"getMultiPlayerGamepad":      {Func: rpcGetMultiPlayerGamepad},
-	"getActiveSessionCount":      {Func: rpcGetActiveSessionCount},
+	"getMultiPlayerGamepad":      {Func: rpcGetMultiPlayerGamepad, GuestAllowed: true},
+	"getActiveSessionCount":      {Func: rpcGetActiveSessionCount, GuestAllowed: true},
 	"kickAllClients":             {Func: rpcKickAllClients},
 	"startTunnel":                {Func: rpcStartTunnel},
 	"stopTunnel":                 {Func: rpcStopTunnel},

@@ -25,6 +25,7 @@ import (
 
 type Session struct {
 	ID                       string
+	IsAdmin                  bool // see SessionConfig.IsAdmin
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	AudioTrack               *webrtc.TrackLocalStaticSample
@@ -128,9 +129,15 @@ type SessionConfig struct {
 	ICEServers []string
 	LocalIP    string
 	IsCloud    bool
-	ws         *websocket.Conn
-	Logger     *zerolog.Logger
-	MDNSMode   string
+	// IsAdmin reflects whether the connecting peer authenticated with the
+	// admin authToken (true) or the guest shareToken (false). Used by the
+	// JSON-RPC dispatcher to gate handlers that aren't marked GuestAllowed.
+	// Cloud sessions (IsCloud=true) are always admin — the cloud websocket
+	// only carries traffic from an authenticated device owner.
+	IsAdmin  bool
+	ws       *websocket.Conn
+	Logger   *zerolog.Logger
+	MDNSMode string
 }
 
 // resolveCodec picks the video codec based on user preference and browser support.
@@ -362,7 +369,11 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	session := &Session{ID: uuid.NewString(), peerConnection: peerConnection}
+	session := &Session{
+		ID:             uuid.NewString(),
+		IsAdmin:        config.IsAdmin || config.IsCloud,
+		peerConnection: peerConnection,
+	}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
 	session.initKeysDownStateQueue()

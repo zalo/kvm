@@ -393,7 +393,9 @@ func runWebsocketClient() error {
 	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, scopedLogger)
+	// Cloud websocket connections come from the device owner's authenticated
+	// cloud session — treat as admin.
+	return handleWebRTCSignalWsMessages(c, true, true, wsURL.Host, connectionId, scopedLogger)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
@@ -432,6 +434,7 @@ func handleSessionRequest(
 	c *websocket.Conn,
 	req WebRTCSessionRequest,
 	isCloudConnection bool,
+	isAdmin bool,
 	source string,
 	scopedLogger *zerolog.Logger,
 ) error {
@@ -458,6 +461,7 @@ func handleSessionRequest(
 	session, err := newSession(SessionConfig{
 		ws:         c,
 		IsCloud:    isCloudConnection,
+		IsAdmin:    isAdmin,
 		LocalIP:    req.IP,
 		ICEServers: req.ICEServers,
 		Logger:     scopedLogger,

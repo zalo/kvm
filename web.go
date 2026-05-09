@@ -259,7 +259,10 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{MDNSMode: config.NetworkConfig.MDNSMode.String})
+	session, err := newSession(SessionConfig{
+		MDNSMode: config.NetworkConfig.MDNSMode.String,
+		IsAdmin:  AuthRoleFromContext(c) == authRoleAdmin,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
@@ -326,7 +329,10 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
+	// Pull the auth role the middleware stamped on this request and forward
+	// it down so the eventual Session is tagged admin or guest.
+	isAdmin := AuthRoleFromContext(c) == authRoleAdmin
+	err = handleWebRTCSignalWsMessages(wsCon, false, isAdmin, source, connectionID, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
@@ -335,6 +341,7 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 func handleWebRTCSignalWsMessages(
 	wsCon *websocket.Conn,
 	isCloudConnection bool,
+	isAdmin bool,
 	source string,
 	connectionID string,
 	scopedLogger *zerolog.Logger,
@@ -469,7 +476,7 @@ func handleWebRTCSignalWsMessages(
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, isAdmin, source, &l)
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("error starting new session")
 				continue
