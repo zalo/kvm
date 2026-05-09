@@ -206,8 +206,16 @@ func setupRouter() *gin.Engine {
 		 * causing users to see the "Rebooting device after update..." message indefinitely
 		 * until they manually refresh the page, leading to a confusing user experience.
 		 */
-		protected.POST("/webrtc/session", handleWebRTCSession)
-		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		// WebRTC signaling endpoints are gated by webrtcAuthMiddleware so guests
+		// holding a valid shareToken cookie (issued by /auth/share-login) can
+		// connect alongside the admin. Admin authToken still grants access.
+		webrtcGroup := r.Group("/")
+		webrtcGroup.Use(webrtcAuthMiddleware())
+		webrtcGroup.POST("/webrtc/session", handleWebRTCSession)
+		webrtcGroup.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		// Public endpoint: guests POST the sharing password here to obtain a
+		// shareToken cookie. Rate-limited per-IP, like /auth/login.
+		r.POST("/auth/share-login", handleSharingLogin)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)

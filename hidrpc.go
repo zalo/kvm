@@ -60,8 +60,15 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to get gamepad report")
 			return
 		}
+		// Multi-tenant: remap the browser-supplied pad index onto this
+		// session's claimed HID slot when multi-player mode is on. -1 means
+		// "no slot available," in which case we silently drop the report.
+		slot := resolveGamepadSlot(session, int(gamepadReport.PadIndex))
+		if slot < 0 {
+			return
+		}
 		rpcErr = rpcGamepadReport(
-			int(gamepadReport.PadIndex),
+			slot,
 			gamepadReport.LX, gamepadReport.LY,
 			gamepadReport.RX, gamepadReport.RY,
 			gamepadReport.LT, gamepadReport.RT,

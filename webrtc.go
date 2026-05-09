@@ -489,6 +489,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			sessions.Remove(session.ID)
+			gamepadSlots.release(session.ID)
 			// When the last session drops, clear pending host input so we don't leave
 			// keys/macros stuck after a disconnect. Multi-tenant: only do this when
 			// no peers remain.

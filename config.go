@@ -122,6 +122,13 @@ type Config struct {
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
 	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
+	// MultiPlayerGamepad routes each WebRTC session's gamepad reports to its
+	// own HID slot (up to usbgadget.MaxGamepads). Off = single-player; all
+	// sessions share slot 0 and last-input wins, matching keyboard/mouse.
+	MultiPlayerGamepad bool   `json:"multi_player_gamepad"`
+	// SharingPasswordHash is a bcrypt hash of the password required to
+	// connect to the WebRTC stream. Empty disables password gating.
+	SharingPasswordHash string `json:"sharing_password_hash,omitempty"`
 }
 
 // GetUpdateAPIURL returns the update API URL

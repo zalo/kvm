@@ -1415,4 +1415,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioInputEnabled":       {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
 	"getAudioInputAutoEnable":    {Func: rpcGetAudioInputAutoEnable},
 	"setAudioInputAutoEnable":    {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},
+	"setSharingPassword":         {Func: rpcSetSharingPassword, Params: []string{"password"}},
+	"getSharingPasswordSet":      {Func: rpcGetSharingPasswordSet},
+	"setMultiPlayerGamepad":      {Func: rpcSetMultiPlayerGamepad, Params: []string{"enabled"}},
+	"getMultiPlayerGamepad":      {Func: rpcGetMultiPlayerGamepad},
 }
