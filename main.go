@@ -70,6 +70,7 @@ func Main() {
 	setProcTitle("initNative")
 	initNative(systemVersionLocal, appVersionLocal)
 	initDisplay()
+	initAudio()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 
@@ -187,7 +188,9 @@ func Main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 
-	logger.Log().Msg("JetKVM Shutting Down")
+	logger.Info().Msg("JetKVM Shutting Down")
+
+	stopAudio()
 
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")

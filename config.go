@@ -120,6 +120,8 @@ type Config struct {
 	VideoCodecPreference string               `json:"video_codec_preference"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
+	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -174,6 +176,7 @@ var (
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
+		Audio:         true,
 	}
 )
 
@@ -212,6 +215,8 @@ func getDefaultConfig() Config {
 			EnableActions:     true,
 			DebounceMs:        500,
 		},
+		AudioInputAutoEnable: false,
+		AudioOutputEnabled:   true,
 	}
 }
 

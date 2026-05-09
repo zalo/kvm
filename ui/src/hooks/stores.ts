@@ -153,6 +153,9 @@ export interface RTCState {
   transceiver: RTCRtpTransceiver | null;
   setTransceiver: (transceiver: RTCRtpTransceiver) => void;
 
+  audioTransceiver: RTCRtpTransceiver | null;
+  setAudioTransceiver: (transceiver: RTCRtpTransceiver) => void;
+
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream) => void;
 
@@ -211,6 +214,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   transceiver: null,
   setTransceiver: transceiver => set({ transceiver }),
+
+  audioTransceiver: null,
+  setAudioTransceiver: (transceiver: RTCRtpTransceiver) => set({ audioTransceiver: transceiver }),
 
   peerConnectionState: null,
   setPeerConnectionState: state => set({ peerConnectionState: state }),
@@ -403,6 +409,16 @@ export interface SettingsState {
 
   gamepadPassthroughEnabled: boolean;
   setGamepadPassthroughEnabled: (enabled: boolean) => void;
+
+  // Audio settings
+  audioOutputEnabled: boolean;
+  setAudioOutputEnabled: (enabled: boolean) => void;
+  microphoneEnabled: boolean;
+  setMicrophoneEnabled: (enabled: boolean) => void;
+  audioInputAutoEnable: boolean;
+  setAudioInputAutoEnable: (enabled: boolean) => void;
+
+  resetMicrophoneState: () => void;
 }
 
 export const useSettingsStore = create(
@@ -462,6 +478,15 @@ export const useSettingsStore = create(
       gamepadPassthroughEnabled: false,
       setGamepadPassthroughEnabled: (enabled: boolean) =>
         set({ gamepadPassthroughEnabled: enabled }),
+
+      audioOutputEnabled: true,
+      setAudioOutputEnabled: (enabled: boolean) => set({ audioOutputEnabled: enabled }),
+      microphoneEnabled: false,
+      setMicrophoneEnabled: (enabled: boolean) => set({ microphoneEnabled: enabled }),
+      audioInputAutoEnable: false,
+      setAudioInputAutoEnable: (enabled: boolean) => set({ audioInputAutoEnable: enabled }),
+
+      resetMicrophoneState: () => set({ microphoneEnabled: false }),
     }),
     {
       name: "settings",

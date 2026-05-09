@@ -16,7 +16,7 @@ import pkg from "react-use-websocket";
 const useWebSocket = pkg.default ?? pkg;
 
 import { cx } from "@/cva.config";
-import { CLOUD_API } from "@/ui.config";
+import { CLOUD_API, OPUS_STEREO_PARAMS } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import {
@@ -30,12 +30,12 @@ import {
   useNetworkStateStore,
   User,
   useRTCStore,
+  useSettingsStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
   VideoState,
   useFailsafeModeStore,
-  useSettingsStore,
 } from "@hooks/stores";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
@@ -59,7 +59,7 @@ import { useGamepad } from "@hooks/useGamepad";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
-import { isLinuxDesktop } from "@/utils";
+import { isLinuxDesktop, isSecureContext } from "@/utils";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -152,6 +152,8 @@ export default function KvmIdRoute() {
     isEmbedMode,
     setEmbedMode,
   } = useUiStore();
+  const { microphoneEnabled, setMicrophoneEnabled, audioInputAutoEnable, setAudioInputAutoEnable } =
+    useSettingsStore();
   const [queryParams, setQueryParams] = useSearchParams();
   const hasEmbedParam = queryParams.has("embed");
 
@@ -179,6 +181,8 @@ export default function KvmIdRoute() {
     setTurnServerInUse,
     rpcDataChannel,
     setTransceiver,
+    setAudioTransceiver,
+    audioTransceiver,
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
@@ -233,6 +237,30 @@ export default function KvmIdRoute() {
       remoteDescription: RTCSessionDescriptionInit,
     ) {
       setLoadingMessage(m.setting_remote_description());
+
+      // Enable stereo in remote answer SDP
+      if (remoteDescription.sdp) {
+        const opusMatch = remoteDescription.sdp.match(/a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+        if (!opusMatch) {
+          console.warn("[SDP] Opus 48kHz stereo not found in answer - stereo may not work");
+        } else {
+          const pt = opusMatch[1];
+          const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, "i");
+          const fmtpMatch = remoteDescription.sdp.match(fmtpRegex);
+
+          if (fmtpMatch && !fmtpMatch[1].includes("stereo=")) {
+            remoteDescription.sdp = remoteDescription.sdp.replace(
+              fmtpRegex,
+              `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`,
+            );
+          } else if (!fmtpMatch) {
+            remoteDescription.sdp = remoteDescription.sdp.replace(
+              opusMatch[0],
+              `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`,
+            );
+          }
+        }
+      }
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
@@ -497,6 +525,35 @@ export default function KvmIdRoute() {
         }
 
         const offer = await pc.createOffer();
+
+        // Enable stereo for Opus audio codec
+        if (offer.sdp) {
+          const opusMatch = offer.sdp.match(/a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+          if (!opusMatch) {
+            console.warn("[SDP] Opus 48kHz stereo not found in offer - stereo may not work");
+          } else {
+            const pt = opusMatch[1];
+            const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, "i");
+            const fmtpMatch = offer.sdp.match(fmtpRegex);
+
+            if (fmtpMatch) {
+              // Modify existing fmtp line
+              if (!fmtpMatch[1].includes("stereo=")) {
+                offer.sdp = offer.sdp.replace(
+                  fmtpRegex,
+                  `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`,
+                );
+              }
+            } else {
+              // Add new fmtp line after rtpmap
+              offer.sdp = offer.sdp.replace(
+                opusMatch[0],
+                `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`,
+              );
+            }
+          }
+        }
+
         await pc.setLocalDescription(offer);
         const sd = btoa(JSON.stringify(pc.localDescription));
         const isNewSignalingEnabled = isLegacySignalingEnabled.current === false;
@@ -536,10 +593,15 @@ export default function KvmIdRoute() {
     };
 
     pc.ontrack = function (event) {
-      setMediaStream(event.streams[0]);
+      if (event.track.kind === "video") {
+        setMediaStream(event.streams[0]);
+      }
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
+
+    const audioTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
+    setAudioTransceiver(audioTrans);
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onclose = () => {
@@ -615,6 +677,7 @@ export default function KvmIdRoute() {
     setRpcHidProtocolVersion,
     setTerminalChannel,
     setTransceiver,
+    setAudioTransceiver,
   ]);
 
   useEffect(() => {
@@ -623,6 +686,49 @@ export default function KvmIdRoute() {
       cleanupAndStopReconnecting();
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
+
+  useEffect(() => {
+    if (!audioTransceiver || !peerConnection) return;
+
+    if (microphoneEnabled) {
+      navigator.mediaDevices
+        ?.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 2,
+          },
+        })
+        .then(stream => {
+          const audioTrack = stream.getAudioTracks()[0];
+          if (audioTrack && audioTransceiver.sender) {
+            audioTransceiver.sender.replaceTrack(audioTrack);
+          }
+        })
+        .catch(() => {
+          setMicrophoneEnabled(false);
+        });
+    } else {
+      if (audioTransceiver.sender.track) {
+        audioTransceiver.sender.track.stop();
+        audioTransceiver.sender.replaceTrack(null);
+      }
+    }
+  }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
+
+  useEffect(() => {
+    if (!audioTransceiver || !peerConnection || !audioInputAutoEnable || microphoneEnabled) return;
+    if (isSecureContext()) {
+      setMicrophoneEnabled(true);
+    }
+  }, [
+    audioInputAutoEnable,
+    audioTransceiver,
+    peerConnection,
+    microphoneEnabled,
+    setMicrophoneEnabled,
+  ]);
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
@@ -844,6 +950,15 @@ export default function KvmIdRoute() {
       }
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  // Load audio input auto-enable preference from backend
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setAudioInputAutoEnable(resp.result as boolean);
+    });
+  }, [rpcDataChannel?.readyState, send, setAudioInputAutoEnable]);
 
   const [needLedState, setNeedLedState] = useState(true);
 

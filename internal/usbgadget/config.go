@@ -63,6 +63,23 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"mass_storage_lun0": massStorageLun0Config,
 	// serial console (CDC-ACM)
 	"serial_console": serialConsoleConfig,
+	// audio (UAC1 - USB Audio Class 1)
+	"audio": {
+		order:      4000,
+		device:     "uac1.usb0",
+		path:       []string{"functions", "uac1.usb0"},
+		configPath: []string{"uac1.usb0"},
+		attrs: gadgetAttributes{
+			"p_chmask":         "3",     // Playback: stereo (2 channels)
+			"p_srate":          "48000", // Playback: 48kHz sample rate
+			"p_ssize":          "2",     // Playback: 16-bit (2 bytes)
+			"p_volume_present": "0",     // Playback: no volume control
+			"c_chmask":         "3",     // Capture: stereo (2 channels)
+			"c_srate":          "48000", // Capture: 48kHz sample rate
+			"c_ssize":          "2",     // Capture: 16-bit (2 bytes)
+			"c_volume_present": "0",     // Capture: no volume control
+		},
+	},
 }
 
 func init() {
@@ -85,6 +102,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.MassStorage
 	case "serial_console":
 		return u.enabledDevices.SerialConsole
+	case "audio":
+		return u.enabledDevices.Audio
 	default:
 		for i := 0; i < MaxGamepads; i++ {
 			if itemKey == gamepadConfigKey(i) {
@@ -227,6 +246,9 @@ func (u *UsbGadget) Init() error {
 		return u.logError("unable to initialize USB stack", err)
 	}
 
+	// Pre-open HID files to reduce input latency
+	u.PreOpenHidFiles()
+
 	return nil
 }
 
@@ -236,10 +258,16 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	u.loadGadgetConfig()
 
+	// Close HID files before reconfiguration to prevent "file already closed" errors
+	u.CloseHidFiles()
+
 	err := u.configureUsbGadget(true)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
+
+	// Reopen HID files after reconfiguration
+	u.PreOpenHidFiles()
 
 	return nil
 }

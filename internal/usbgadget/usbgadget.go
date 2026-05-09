@@ -22,6 +22,7 @@ type Devices struct {
 	Gamepad       bool `json:"gamepad"`
 	MassStorage   bool `json:"mass_storage"`
 	SerialConsole bool `json:"serial_console"`
+	Audio         bool `json:"audio"`
 }
 
 // Config is a struct that represents the customizations for a USB gadget.
@@ -42,6 +43,7 @@ var defaultUsbGadgetDevices = Devices{
 	RelativeMouse: true,
 	Keyboard:      true,
 	MassStorage:   true,
+	Audio:         true,
 }
 
 type KeysDownState struct {
@@ -228,5 +230,41 @@ func (u *UsbGadget) ResetHIDFiles() {
 			u.gamepadHidFiles[i] = nil
 		}
 		unlockWithLog(&u.gamepadLocks[i], u.log, "gamepadHidFile reset")
+	}
+}
+
+// CloseHidFiles closes all open HID files (gamepad-aware variant for audio reconfiguration paths).
+func (u *UsbGadget) CloseHidFiles() {
+	u.ResetHIDFiles()
+}
+
+// PreOpenHidFiles opens all HID files to reduce input latency
+func (u *UsbGadget) PreOpenHidFiles() {
+	// Add a small delay to allow USB gadget reconfiguration to complete
+	// This prevents "no such device or address" errors when trying to open HID files
+	time.Sleep(100 * time.Millisecond)
+
+	if u.enabledDevices.Keyboard {
+		if err := u.openKeyboardHidFile(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to pre-open keyboard HID file")
+		}
+	}
+	if u.enabledDevices.AbsoluteMouse {
+		if u.absMouseHidFile == nil {
+			var err error
+			u.absMouseHidFile, err = os.OpenFile("/dev/hidg1", os.O_RDWR, 0666)
+			if err != nil {
+				u.log.Debug().Err(err).Msg("failed to pre-open absolute mouse HID file")
+			}
+		}
+	}
+	if u.enabledDevices.RelativeMouse {
+		if u.relMouseHidFile == nil {
+			var err error
+			u.relMouseHidFile, err = os.OpenFile("/dev/hidg2", os.O_RDWR, 0666)
+			if err != nil {
+				u.log.Debug().Err(err).Msg("failed to pre-open relative mouse HID file")
+			}
+		}
 	}
 }

@@ -657,7 +657,8 @@ func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
 	LoadConfig()
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
-	return updateUsbRelatedConfig()
+	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	return updateUsbRelatedConfig(wasAudioEnabled)
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
@@ -905,26 +906,45 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
-func updateUsbRelatedConfig() error {
+func updateUsbRelatedConfig(wasAudioEnabled bool) error {
+	ensureConfigLoaded()
+
+	// Stop input audio before USB reconfiguration (input uses USB)
+	audioMutex.Lock()
+	stopInputLocked()
+	audioMutex.Unlock()
+
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
 	}
 	// Reset recovery timer so auto-recovery doesn't interfere during
 	// the host's USB re-enumeration window after a deliberate config change.
 	setUSBRecoveryTimer(time.Now())
+
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
+
+	// Restart audio if USB audio is enabled with active connections
+	if activeConnections.Load() > 0 && config.UsbDevices != nil && config.UsbDevices.Audio {
+		if err := startAudio(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
+		}
+	}
+
 	return nil
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig()
+	return updateUsbRelatedConfig(wasAudioEnabled)
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
+	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+
 	switch device {
 	case "absoluteMouse":
 		config.UsbDevices.AbsoluteMouse = enabled
@@ -938,11 +958,46 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.SerialConsole = enabled
 	case "gamepad":
 		config.UsbDevices.Gamepad = enabled
+	case "audio":
+		config.UsbDevices.Audio = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig()
+	return updateUsbRelatedConfig(wasAudioEnabled)
+}
+
+func rpcGetAudioOutputEnabled() (bool, error) {
+	ensureConfigLoaded()
+	return config.AudioOutputEnabled, nil
+}
+
+func rpcSetAudioOutputEnabled(enabled bool) error {
+	ensureConfigLoaded()
+	config.AudioOutputEnabled = enabled
+	if err := SaveConfig(); err != nil {
+		return err
+	}
+	return SetAudioOutputEnabled(enabled)
+}
+
+func rpcGetAudioInputEnabled() (bool, error) {
+	return audioInputEnabled.Load(), nil
+}
+
+func rpcSetAudioInputEnabled(enabled bool) error {
+	return SetAudioInputEnabled(enabled)
+}
+
+func rpcGetAudioInputAutoEnable() (bool, error) {
+	ensureConfigLoaded()
+	return config.AudioInputAutoEnable, nil
+}
+
+func rpcSetAudioInputAutoEnable(enabled bool) error {
+	ensureConfigLoaded()
+	config.AudioInputAutoEnable = enabled
+	return SaveConfig()
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
@@ -1354,4 +1409,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setMqttSettings":            {Func: rpcSetMqttSettings, Params: []string{"settings"}},
 	"getMqttStatus":              {Func: rpcGetMqttStatus},
 	"testMqttConnection":         {Func: rpcTestMqttConnection, Params: []string{"settings"}},
+	"getAudioOutputEnabled":      {Func: rpcGetAudioOutputEnabled},
+	"setAudioOutputEnabled":      {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
+	"getAudioInputEnabled":       {Func: rpcGetAudioInputEnabled},
+	"setAudioInputEnabled":       {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
+	"getAudioInputAutoEnable":    {Func: rpcGetAudioInputAutoEnable},
+	"setAudioInputAutoEnable":    {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},
 }

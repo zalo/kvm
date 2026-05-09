@@ -11,6 +11,40 @@ VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
 # KNOWN_SKUS in cloud-api/scripts/sync-releases.ts.
 APP_SKUS := jetkvm-v2 jetkvm-v2-sdmmc
 
+# Audio library install location (built by .devcontainer/install_audio_deps.sh).
+AUDIO_LIBS_DIR ?= /opt/jetkvm-audio-libs
+
+# Build ALSA and Opus static libs for ARM in $(AUDIO_LIBS_DIR)
+build_audio_deps:
+	bash .devcontainer/install_audio_deps.sh $(ALSA_VERSION) $(OPUS_VERSION)
+
+
+# Audio library versions
+ALSA_VERSION ?= 1.2.14
+OPUS_VERSION ?= 1.5.2
+
+# Set PKG_CONFIG_PATH globally for all targets that use CGO with audio libraries
+export PKG_CONFIG_PATH := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)
+
+# Common command to clean Go cache with verbose output for all Go builds
+CLEAN_GO_CACHE := @echo "Cleaning Go cache..."; go clean -cache -v
+
+# Optimization flags for ARM Cortex-A7 with NEON SIMD
+OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops -mvectorize-with-neon-quad -marm -D__ARM_NEON
+
+# Cross-compilation environment for ARM - exported globally
+export GOOS := linux
+export GOARCH := arm
+export GOARM := 7
+export CC := $(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc
+export CGO_ENABLED := 1
+export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include
+export CGO_LDFLAGS := -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -lpthread -lm -ldl
+
+# Audio-specific flags (only used for audio C binaries, NOT for main Go app)
+AUDIO_CFLAGS := $(CGO_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
+AUDIO_LDFLAGS := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs/libasound.a $(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs/libopus.a -lm -ldl -lpthread
+
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
 
@@ -179,7 +213,7 @@ build_dev:
 		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
-_build_dev_inner: build_native
+_build_dev_inner: build_native build_audio_deps
 	@echo "Building... $(VERSION_DEV)"
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
@@ -187,14 +221,17 @@ _build_dev_inner: build_native
 		-o $(BIN_DIR)/jetkvm_app -v cmd/main.go
 
 build_test2json:
+	$(CLEAN_GO_CACHE)
 	$(GO_CMD) build -o $(BIN_DIR)/test2json cmd/test2json
 
 build_gotestsum:
+	$(CLEAN_GO_CACHE)
 	@echo "Building gotestsum..."
 	$(GO_CMD) install gotest.tools/gotestsum@latest
 	cp $(shell $(GO_CMD) env GOPATH)/bin/linux_arm/gotestsum $(BIN_DIR)/gotestsum
 
-build_dev_test: build_test2json build_gotestsum
+build_dev_test: build_audio_deps build_test2json build_gotestsum
+	$(CLEAN_GO_CACHE)
 # collect all directories that contain tests
 	@echo "Building tests for devices ..."
 	@rm -rf $(BIN_DIR)/tests && mkdir -p $(BIN_DIR)/tests
@@ -204,7 +241,7 @@ build_dev_test: build_test2json build_gotestsum
 		test_pkg_name=$$(echo $$test | sed 's/^.\///g'); \
 		test_pkg_full_name=$(KVM_PKG_NAME)/$$(echo $$test | sed 's/^.\///g'); \
 		test_filename=$$(echo $$test_pkg_name | sed 's/\//__/g')_test; \
-		$(GO_CMD) test -v \
+		go test -v \
 			-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 			$(GO_BUILD_ARGS) \
 			-c -o $(BIN_DIR)/tests/$$test_filename $$test; \
@@ -330,9 +367,9 @@ build_release:
 		$(MAKE) _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
-_build_release_inner: build_native
+_build_release_inner: build_native build_audio_deps
 	@echo "Building release..."
-	$(GO_CMD) build \
+	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
 		$(GO_RELEASE_BUILD_ARGS) \
 		-o $(BIN_DIR)/jetkvm_app cmd/main.go
@@ -437,3 +474,38 @@ bump-version:
 		git commit -m "Bump version to $$next_ver" && \
 		git push && \
 		echo "✓ Bumped to $$next_ver"
+
+# Run both Go and UI linting
+lint: lint-go lint-ui
+	@echo "All linting completed successfully!"
+
+# Run golangci-lint locally with the same configuration as CI
+lint-go: build_audio_deps
+	@echo "Running golangci-lint..."
+	@mkdir -p static && touch static/.gitkeep
+	golangci-lint run --verbose
+
+# Run both Go and UI linting with auto-fix
+lint-fix: lint-go-fix lint-ui-fix
+	@echo "All linting with auto-fix completed successfully!"
+
+# Run golangci-lint with auto-fix
+lint-go-fix: build_audio_deps
+	@echo "Running golangci-lint with auto-fix..."
+	@mkdir -p static && touch static/.gitkeep
+	golangci-lint run --fix --verbose
+
+# Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
+lint-ui:
+	@echo "Running UI lint..."
+	@cd ui && npm ci
+	@cd ui && npm run lint
+
+# Run UI linting with auto-fix
+lint-ui-fix:
+	@echo "Running UI lint with auto-fix..."
+	@cd ui && npm ci
+	@cd ui && npm run lint:fix
+
+# Legacy alias for UI linting (for backward compatibility)
+ui-lint: lint-ui

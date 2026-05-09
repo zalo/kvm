@@ -25,6 +25,7 @@ import (
 type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
+	AudioTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
@@ -414,6 +415,38 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
+	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
+		"audio",
+		"kvm-audio",
+	)
+	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to create AudioTrack (non-fatal)")
+	} else {
+		_, err = peerConnection.AddTransceiverFromTrack(session.AudioTrack, webrtc.RTPTransceiverInit{
+			Direction: webrtc.RTPTransceiverDirectionSendrecv,
+		})
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("Failed to add AudioTrack transceiver (non-fatal)")
+			session.AudioTrack = nil
+		} else {
+			setAudioTrack(session.AudioTrack)
+
+			peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+				scopedLogger.Info().
+					Str("codec", track.Codec().MimeType).
+					Str("track_id", track.ID()).
+					Msg("Received incoming audio track from browser")
+
+				// Store track for connection when audio starts
+				// OnTrack fires during SDP exchange, before ICE connection completes
+				setPendingInputTrack(track)
+			})
+
+			scopedLogger.Info().Msg("Audio tracks configured successfully")
+		}
+	}
+
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
@@ -448,6 +481,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
+			// Only clear currentSession if this is actually the current session
+			// This prevents race condition where old session closes after new one connects
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
 				cancelKeyboardMacro()
@@ -508,6 +543,7 @@ func onFirstSessionConnected() {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
 	_ = nativeInstance.VideoStart()
+	onWebRTCConnect()
 	stopVideoSleepModeTicker()
 }
 
@@ -515,5 +551,6 @@ func onLastSessionDisconnected() {
 	// Safety net: ensure all keys are released when the last session disconnects
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 	_ = nativeInstance.VideoStop()
+	onWebRTCDisconnect()
 	startVideoSleepModeTicker()
 }

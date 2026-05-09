@@ -1,13 +1,27 @@
-import { cx } from "@/cva.config";
+import { Link } from "react-router";
+
+import { cva, cx } from "@/cva.config";
 import LoadingSpinner from "@components/LoadingSpinner";
 
 type SettingsItemSize = "SM" | "MD";
+
+const badgeVariants = cva({
+  base: "ml-2 rounded-full px-2 py-1 text-[10px] font-medium leading-none text-white dark:border",
+  variants: {
+    variant: {
+      error: "bg-red-500 dark:border-red-700 dark:bg-red-800 dark:text-red-50",
+      info: "bg-blue-500 dark:border-blue-600 dark:bg-blue-700 dark:text-blue-50",
+    },
+  },
+});
 
 interface SettingsItemProps {
   readonly title: string;
   readonly description: string | React.ReactNode;
   readonly badge?: string;
   readonly badgeTheme?: keyof typeof badgeTheme;
+  readonly badgeVariant?: "error" | "info";
+  readonly badgeLink?: string;
   readonly className?: string;
   readonly loading?: boolean;
   readonly children?: React.ReactNode;
@@ -27,6 +41,8 @@ export function SettingsItem(props: SettingsItemProps) {
     description,
     badge,
     badgeTheme: badgeThemeProp = "danger",
+    badgeVariant,
+    badgeLink,
     children,
     className,
     loading,
@@ -35,6 +51,24 @@ export function SettingsItem(props: SettingsItemProps) {
   const badgeThemeClass = badgeTheme[badgeThemeProp];
 
   const isSM = size === "SM";
+
+  // If audio-style badgeVariant or badgeLink is provided, render the audio-style badge
+  // (which supports linkable badges via the cva variants); otherwise fall back to the
+  // legacy badgeTheme-based rendering used elsewhere in the app.
+  const useVariantBadge = badgeVariant !== undefined || badgeLink !== undefined;
+  const badgeClasses = badgeVariants({ variant: badgeVariant ?? "error" });
+  const variantBadgeContent =
+    badge &&
+    (badgeLink ? (
+      <Link
+        to={badgeLink}
+        className={cx(badgeClasses, "cursor-pointer transition-opacity hover:opacity-80")}
+      >
+        {badge}
+      </Link>
+    ) : (
+      <span className={badgeClasses}>{badge}</span>
+    ));
 
   return (
     <label
@@ -49,16 +83,18 @@ export function SettingsItem(props: SettingsItemProps) {
             )}
           >
             {title}
-            {badge && (
-              <span
-                className={cx(
-                  "ml-2 rounded-full px-2 py-1 text-[10px] leading-none font-medium text-white",
-                  badgeThemeClass,
+            {useVariantBadge
+              ? variantBadgeContent
+              : badge && (
+                  <span
+                    className={cx(
+                      "ml-2 rounded-full px-2 py-1 text-[10px] leading-none font-medium text-white",
+                      badgeThemeClass,
+                    )}
+                  >
+                    {badge}
+                  </span>
                 )}
-              >
-                {badge}
-              </span>
-            )}
           </div>
           {loading && <LoadingSpinner className="h-4 w-4 text-blue-500" />}
         </div>

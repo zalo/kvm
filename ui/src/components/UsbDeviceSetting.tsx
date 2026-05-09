@@ -26,6 +26,7 @@ export interface UsbDeviceConfig {
   relative_mouse: boolean;
   mass_storage: boolean;
   serial_console: boolean;
+  audio: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -34,11 +35,12 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   relative_mouse: true,
   mass_storage: true,
   serial_console: false,
+  audio: true,
 };
 
 const usbPresets = [
   {
-    label: m.usb_device_keyboard_mouse_and_mass_storage(),
+    label: m.usb_device_keyboard_mouse_mass_storage_and_audio(),
     value: "default",
     config: {
       keyboard: true,
@@ -46,6 +48,19 @@ const usbPresets = [
       relative_mouse: true,
       mass_storage: true,
       serial_console: false,
+      audio: true,
+    },
+  },
+  {
+    label: m.usb_device_keyboard_mouse_and_mass_storage(),
+    value: "keyboard_mouse_and_mass_storage",
+    config: {
+      keyboard: true,
+      absolute_mouse: true,
+      relative_mouse: true,
+      mass_storage: true,
+      serial_console: false,
+      audio: false,
     },
   },
   {
@@ -57,6 +72,7 @@ const usbPresets = [
       relative_mouse: false,
       mass_storage: false,
       serial_console: false,
+      audio: false,
     },
   },
   {
@@ -234,6 +250,17 @@ export function UsbDeviceSetting() {
                 <Checkbox
                   checked={usbDeviceConfig.serial_console}
                   onChange={onUsbConfigItemChange("serial_console")}
+                />
+              </SettingsItem>
+            </div>
+            <div className="space-y-4">
+              <SettingsItem
+                title={m.usb_device_enable_audio_title()}
+                description={m.usb_device_enable_audio_description()}
+              >
+                <Checkbox
+                  checked={usbDeviceConfig.audio}
+                  onChange={onUsbConfigItemChange("audio")}
                 />
               </SettingsItem>
             </div>

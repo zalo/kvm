@@ -5,7 +5,7 @@ function sudo() {
   if [ "$UID" -eq 0 ]; then
     "$@"
   else
-    ${SUDO_PATH} "$@"
+    ${SUDO_PATH} -E "$@"
   fi
 }
 
@@ -57,7 +57,35 @@ pushd "${BUILDKIT_TMPDIR}" > /dev/null
 
 wget https://github.com/jetkvm/rv1106-system/releases/download/${BUILDKIT_VERSION}/buildkit.tar.zst && \
     sudo mkdir -p /opt/jetkvm-native-buildkit && \
-    sudo tar --use-compress-program="unzstd --long=31" -xvf buildkit.tar.zst -C /opt/jetkvm-native-buildkit && \
+    sudo tar --use-compress-program="zstd -d --long=31" -xvf buildkit.tar.zst -C /opt/jetkvm-native-buildkit && \
     rm buildkit.tar.zst
 popd
+
+# Install audio dependencies (ALSA and Opus) for JetKVM
+echo "Installing JetKVM audio dependencies..."
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+AUDIO_DEPS_SCRIPT="${PROJECT_ROOT}/install_audio_deps.sh"
+
+if [ -f "${AUDIO_DEPS_SCRIPT}" ]; then
+    echo "Running audio dependencies installation..."
+    # Pre-create audio libs directory with proper permissions
+    sudo mkdir -p /opt/jetkvm-audio-libs
+    sudo chmod 777 /opt/jetkvm-audio-libs
+    # Run installation script (now it can write without sudo)
+    bash "${AUDIO_DEPS_SCRIPT}"
+    echo "Audio dependencies installation completed."
+    if [ -d "/opt/jetkvm-audio-libs" ]; then
+        echo "Audio libraries installed in /opt/jetkvm-audio-libs"
+        # Set recursive permissions for all subdirectories and files
+        sudo chmod -R 777 /opt/jetkvm-audio-libs
+        echo "Permissions set to allow all users access to audio libraries"
+    else
+        echo "Error: /opt/jetkvm-audio-libs directory not found after installation."
+        exit 1
+    fi
+else
+    echo "Warning: Audio dependencies script not found at ${AUDIO_DEPS_SCRIPT}"
+    echo "Skipping audio dependencies installation."
+fi
 rm -rf "${BUILDKIT_TMPDIR}"

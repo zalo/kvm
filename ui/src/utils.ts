@@ -257,9 +257,11 @@ export function isChromeOS() {
  * "Loading video stream..." screen. See jetkvm/kvm#1413.
  */
 export function isLinuxDesktop() {
-  const uaData = (navigator as Navigator & {
-    userAgentData?: { platform?: string };
-  }).userAgentData;
+  const uaData = (
+    navigator as Navigator & {
+      userAgentData?: { platform?: string };
+    }
+  ).userAgentData;
 
   if (uaData?.platform) return uaData.platform === "Linux";
 
@@ -344,4 +346,8 @@ export function buildCloudUrl(deviceId: string, appVersion: string | undefined, 
     uri = `/v/${version}${uri}`;
   }
   return new URL(uri, window.location.origin).href;
+}
+
+export function isSecureContext(): boolean {
+  return window.location.protocol === "https:" || window.location.hostname === "localhost";
 }

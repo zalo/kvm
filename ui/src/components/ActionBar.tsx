@@ -9,6 +9,7 @@ import {
   LuSettings,
   LuSignal,
   LuTerminal,
+  LuVolume2,
   LuX,
 } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
@@ -32,6 +33,7 @@ import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
 import MountPopopover from "@components/popovers/MountPopover";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
+import AudioPopover from "@components/popovers/AudioPopover";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { m } from "@localizations/messages.js";
 
@@ -269,6 +271,36 @@ export default function Actionbar({
               onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
             />
           </div>
+          <Popover>
+            <PopoverButton as={Fragment}>
+              <Button
+                size="XS"
+                theme="light"
+                text={m.action_bar_audio()}
+                LeadingIcon={LuVolume2}
+                onClick={() => {
+                  setDisableVideoFocusTrap(true);
+                }}
+              />
+            </PopoverButton>
+            <PopoverPanel
+              anchor="bottom start"
+              transition
+              className={cx(
+                "z-10 flex w-[420px] flex-col overflow-visible!",
+                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
+              )}
+            >
+              {({ open }) => {
+                checkIfStateChanged(open);
+                return (
+                  <div className="mx-auto w-full max-w-xl">
+                    <AudioPopover />
+                  </div>
+                );
+              }}
+            </PopoverPanel>
+          </Popover>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
